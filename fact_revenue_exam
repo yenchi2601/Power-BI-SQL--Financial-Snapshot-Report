@@ -1,0 +1,63 @@
+WITH exams_cte AS 
+
+(SELECT
+    ce_start::date AS ce_start
+    ,TRIM(UPPER(ce_site)) AS ce_site
+    ,TRIM(UPPER(ex_type)) AS ex_type
+    ,SUM(cx_quantity) AS exams
+
+FROM case_event
+    INNER JOIN case_procedure ON ce_serial = cx_ce_serial
+    INNER JOIN exams ON cx_key = ex_serial 
+
+WHERE
+    ce_start::date > date_trunc('month', CURRENT_DATE) - INTERVAL '1 year'
+
+GROUP BY
+    ce_start::date
+    ,ce_site
+    ,ex_type
+)
+,revenue_cte AS (SELECT
+    ce_start::date AS ce_start
+    ,TRIM(UPPER(ce_site)) AS ce_site
+    ,TRIM(UPPER(ex_type)) AS ex_type
+    ,SUM(jo_amount) AS revenue
+
+FROM case_event
+    INNER JOIN account_transact ON ce_serial = at_source_key
+    INNER JOIN account_journal ON jo_at_serial = at_serial
+    INNER JOIN exams ON jo_ref_key = ex_serial
+
+/*
+-- below are old joined tables, not accurate, pls use account_journal joined with account_transact above
+  --  INNER JOIN case_procedure ON ce_serial = cx_ce_serial
+  --  INNER JOIN exams ON cx_key = ex_serial
+  --  INNER JOIN account_journal ON cx_serial = jo_cx_serial
+*/
+
+WHERE
+    ce_start::date > date_trunc('month', CURRENT_DATE) - INTERVAL '1 year'
+
+GROUP BY
+    ce_start::date
+    ,ce_site
+    ,ex_type)
+
+SELECT
+    EXTRACT(month FROM exams_cte.ce_start) AS month
+    ,EXTRACT(day FROM exams_cte.ce_start) AS day
+	,exams_cte.*
+    ,revenue
+
+FROM exams_cte
+LEFT JOIN revenue_cte
+    ON exams_cte.ce_start = revenue_cte.ce_start
+    AND exams_cte.ce_site = revenue_cte.ce_site
+    AND exams_cte.ex_type = revenue_cte.ex_type
+
+ORDER BY
+    ce_start
+    ,ce_site
+    ,ex_type
+    ;
